@@ -95,7 +95,7 @@ class SiliconFlowTextAPI(SiliconFlowBase):
                     response_json = response.json()
                     
                     # 记录原始响应
-                    logger.debug(f"SiliconFlow API 原始响应: {json.dumps(response_json, ensure_ascii=False)}")
+                    # logger.debug(f"SiliconFlow API 原始响应: {json.dumps(response_json, ensure_ascii=False)}")
                     
                     # 转换为与 OpenAI 兼容的格式
                     result = {
@@ -194,7 +194,7 @@ class SiliconFlowTextAPI(SiliconFlowBase):
         prompt: str,
         model: str = "deepseek-ai/DeepSeek-V3",
         temperature: float = 0.7,
-        top_p: float = 0.9,
+        top_p: float = None,
         max_tokens: Optional[int] = None,
         stream: bool = False,
         **kwargs
@@ -228,7 +228,7 @@ class SiliconFlowTextAPI(SiliconFlowBase):
         messages: List[Dict[str, str]],
         model: str = "deepseek-ai/DeepSeek-V3",
         temperature: float = 0.7,
-        top_p: float = 0.9,
+        top_p: float = None,
         max_tokens: Optional[int] = None,
         stream: bool = False,
         **kwargs

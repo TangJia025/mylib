@@ -1,11 +1,8 @@
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from util.mylog import logger
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from myhuggingface.huggingface_base import HuggingFaceBase
 from util.base import BaseEmbedding
-from util.util import split_model_name
-import torch
-import numpy as np
 
 class HuggingFaceEmbedding(BaseEmbedding, HuggingFaceBase):
     """HuggingFace 本地嵌入模型 API 调用封装"""

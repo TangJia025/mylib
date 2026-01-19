@@ -91,7 +91,7 @@ class OpenAITextAPI(OpenAIBase):
             messages: List[Dict[str, str]],
             model: str = "gpt-3.5-turbo",
             temperature: Optional[float] = 0.6,
-            top_p: Optional[float] = 0.9,
+            top_p: Optional[float] = None,
             max_tokens: Optional[int] = None,
             stop: Optional[str] = None,
             **kwargs: Any
@@ -102,6 +102,7 @@ class OpenAITextAPI(OpenAIBase):
                     "messages": messages,
                     **kwargs
                 }
+                params.pop("image", None)
                 
                 if temperature is not None:
                     params["temperature"] = temperature
@@ -119,19 +120,43 @@ class OpenAITextAPI(OpenAIBase):
                 response = self.client.chat.completions.create(**params)
                 
                 # 记录原始响应
-                logger.info(f"OpenAI API 原始响应: {response}")
+                # logger.info(f"OpenAI API 原始响应: {response}")
                 
                 # 转换响应格式
+                message_obj = response.choices[0].message
+                result_message = {
+                    "content": message_obj.content
+                }
+                
+                # 处理 tool_calls
+                if hasattr(message_obj, "tool_calls") and message_obj.tool_calls:
+                    result_message["tool_calls"] = [
+                        {
+                            "id": tool.id,
+                            "type": tool.type,
+                            "function": {
+                                "name": tool.function.name,
+                                "arguments": tool.function.arguments
+                            }
+                        } for tool in message_obj.tool_calls
+                    ]
+                
+                # 处理 function_call (旧版)
+                if hasattr(message_obj, "function_call") and message_obj.function_call:
+                    result_message["function_call"] = {
+                        "name": message_obj.function_call.name,
+                        "arguments": message_obj.function_call.arguments
+                    }
+                
                 result = {
                     "choices": [{
-                        "message": {
-                            "content": response.choices[0].message.content
-                        }
+                        "message": result_message
                     }]
                 }
                 
                 # 记录处理后的响应
-                logger.info(f"OpenAI API 响应内容: {result['choices'][0]['message']['content'][:100]}...")
+                content_preview = result['choices'][0]['message']['content']
+                logger.info(f"OpenAI API 响应内容: {str(content_preview)[:100]}...")
                 
                 return result
                 

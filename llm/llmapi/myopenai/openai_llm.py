@@ -1,8 +1,9 @@
 from typing import Any, List, Mapping, Optional, Dict
-from langchain.llms.base import LLM
-from langchain.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
+from langchain_core.callbacks import CallbackManagerForLLMRun
 from pydantic import Field
 from myopenai.openai_text import OpenAITextAPI
+from util.llm_utils import process_llm_response
 
 class OpenAILLM(LLM):
     """OpenAI 大模型的 LangChain LLM 实现"""
@@ -31,7 +32,7 @@ class OpenAILLM(LLM):
         """Get the default parameters for calling OpenAI API."""
         return {
             "temperature": 0.6,
-            "top_p": 0.9,
+            "top_p": None,
             "max_tokens": 8192,
             "model": "gpt-3.5-turbo"
         }
@@ -53,17 +54,11 @@ class OpenAILLM(LLM):
             temperature=self.temperature,
             top_p=self.top_p,
             max_tokens=self.max_tokens,
-            stop=stop[0] if stop else None
+            stop=stop[0] if stop else None,
+            **kwargs
         )
         
-        if "error" in response:
-            raise ValueError(f"API调用错误: {response['error']}")
-            
-        if "choices" not in response:
-            raise ValueError("API响应格式错误")
-        
-        result = response["choices"][0]["message"]["content"]
-        return result
+        return process_llm_response(response)
         
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
@@ -90,4 +85,3 @@ if __name__ == "__main__":
         {"role": "assistant", "content": "我是 OpenAI 助手。"}
     ]
     response = llm("我们之前聊了什么？", messages=history)
-    logger.info(f"带历史响应：{response}")

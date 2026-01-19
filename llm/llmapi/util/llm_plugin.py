@@ -14,17 +14,6 @@ class Plugin:
         logger.debug(f"Response: {response}")
         return response
 
-class ReplaceHtmlPlugin(Plugin):
-    """替换某些字符的的插件，TODO：存在bug，待修复"""
-    def __init__(self):
-        self.replace_html = ['<', '>']
-        
-    def process_output(self, response: str) -> str:
-        logger.debug(f"Response: {response}")
-        for html in self.replace_html:
-            response = response.replace(html, f"\{html}")
-        return response
-
 class ReplaceImagePlugin(Plugin):
     """替换图片的插件"""
     def __init__(self):
@@ -55,4 +44,3 @@ class ReplaceImagePlugin(Plugin):
     def process_output(self, response: str) -> str:
         logger.debug(f"Response: {response}")
         return re.sub(self.pattern, self.replace_image, response)
-        

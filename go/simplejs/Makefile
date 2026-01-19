@@ -1,71 +1,23 @@
-# Makefile for SimpleJS v2.0 (C++11 version) - Simplified
-
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Wextra -O2 -g
-INCLUDES = -I.
+CXXFLAGS = -O2 -Wall -g -DJS_DUMP
 
-# Source files
-MAIN_TEST_SRC = main_test.cpp
-HEADER_V2 = simplejs_v2.h
+.PHONY: test test_v2 clean help
 
-# Target executables
-MAIN_TEST_BIN = main_test
-MAIN_TEST_DEBUG_BIN = main_test_debug
+test: simplejs.cc test.cc
+	$(CXX) $(CXXFLAGS) -o test_runner simplejs.cc test.cc
+	./test_runner
 
-# Default target
-all: test
+test_v2: simplejs_v2.cc test_v2.cc
+	$(CXX) $(CXXFLAGS) -std=c++11 -o test_runner_v2 simplejs_v2.cc test_v2.cc
+	./test_runner_v2
 
-# Build test program
-$(MAIN_TEST_BIN): $(MAIN_TEST_SRC) $(HEADER_V2)
-	@echo "Building SimpleJS v2.0 test..."
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(MAIN_TEST_SRC)
-	@echo "✅ Build completed: $@"
-
-# Build debug version
-$(MAIN_TEST_DEBUG_BIN): $(MAIN_TEST_SRC) $(HEADER_V2)
-	@echo "Building SimpleJS v2.0 test (debug)..."
-	$(CXX) $(CXXFLAGS) -DDEBUG -O0 $(INCLUDES) -o $@ $(MAIN_TEST_SRC)
-	@echo "✅ Debug build completed: $@"
-
-# Run tests
-test: $(MAIN_TEST_BIN)
-	@echo "\n🚀 Running SimpleJS v2.0 tests..."
-	@echo "==========================================="
-	./$(MAIN_TEST_BIN)
-	@echo "==========================================="
-	@echo "✅ Tests completed!"
-
-# Run debug tests
-debug: $(MAIN_TEST_DEBUG_BIN)
-	@echo "\n🚀 Running SimpleJS v2.0 tests (debug)..."
-	@echo "============================================="
-	./$(MAIN_TEST_DEBUG_BIN)
-	@echo "============================================="
-	@echo "✅ Debug tests completed!"
-
-# Clean build artifacts
 clean:
-	@echo "🧹 Cleaning build artifacts..."
-	rm -f $(MAIN_TEST_BIN) $(MAIN_TEST_DEBUG_BIN)
-	@echo "✅ Clean completed!"
+	rm -f test_runner test_runner_v2
 
-# Show help
 help:
-	@echo "SimpleJS v2.0 Build System (Simplified)"
-	@echo "========================================"
-	@echo "Available targets:"
-	@echo "  all    - Build test program (default)"
-	@echo "  test   - Build and run tests"
-	@echo "  debug  - Build and run debug tests"
-	@echo "  clean  - Clean build artifacts"
-	@echo "  help   - Show this help message"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make test   # Build and run tests"
-	@echo "  make debug  # Build and run debug tests"
-
-# Phony targets
-.PHONY: all test debug clean help
-
-# Default goal
-.DEFAULT_GOAL := all
+	@echo "SimpleJS Makefile"
+	@echo "Targets:"
+	@echo "  test    : Compile and run original tests"
+	@echo "  test_v2 : Compile and run v2 tests (C++11 refactor)"
+	@echo "  clean   : Remove build artifacts"
+	@echo "  help    : Show this help message"

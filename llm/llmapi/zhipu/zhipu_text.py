@@ -61,7 +61,7 @@ class ZhipuTextAPI(ZhipuBaseAPI):
         image,
         model: str = "glm-4v",
         temperature: float = 0.6,
-        top_p: float = 0.9,
+        top_p: float = None,
         max_tokens: int = None,
         stream: bool = False,
         request_id: str = None,

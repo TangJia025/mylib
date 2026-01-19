@@ -1,9 +1,10 @@
 from util.mylog import logger
 from typing import Any, List, Mapping, Optional, Dict
-from langchain.llms.base import LLM
-from langchain.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
+from langchain_core.callbacks import CallbackManagerForLLMRun
 from pydantic import Field
 from qianfan.qianfan_text import QianFanTextAPI
+from util.llm_utils import process_llm_response
 
 class QianFanLLM(LLM):
     """百度千帆大模型的 LangChain LLM 实现"""
@@ -21,12 +22,12 @@ class QianFanLLM(LLM):
     def _llm_type(self) -> str:
         """返回 LLM 类型"""
         return "qianfan"
-
+    
     @property
     def _supported_params(self) -> List[str]:
         """Return supported parameters."""
         return ["temperature", "top_p", "max_tokens", "model"]
-
+    
     @property
     def _default_params(self) -> Dict[str, Any]:
         """Get the default parameters for calling QianFan API."""
@@ -46,6 +47,7 @@ class QianFanLLM(LLM):
         """执行 LLM 调用，支持对话历史和图片输入"""
         messages = kwargs.pop("messages", None)
         image = kwargs.pop("image", None)
+        kwargs.pop("tools", None)
         
         if messages:
             messages.append({"role": "user", "content": prompt})
@@ -63,13 +65,7 @@ class QianFanLLM(LLM):
             **kwargs
         )
         
-        if "error" in response:
-            raise ValueError(f"API调用错误: {response['error']}")
-            
-        if "choices" not in response:
-            raise ValueError("API响应格式错误")
-        
-        result = response["choices"][0]["message"]["content"]
+        result = process_llm_response(response)
         logger.info(f"LLM Response: {result}")
         return result
         
@@ -98,4 +94,3 @@ if __name__ == "__main__":
         {"role": "assistant", "content": "我是千帆大模型。"}
     ]
     response = llm("我们之前聊了什么？", messages=history)
-    logger.info(f"带历史响应：{response}")

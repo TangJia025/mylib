@@ -78,14 +78,23 @@ class QwenTextAPI(QwenBase):
                 response = self.client.chat.completions.create(**params)
                 
                 # 记录原始响应
-                logger.info(f"通义千问 API 原始响应: {response}")
+                # logger.info(f"通义千问 API 原始响应: {response}")
                 
                 # 转换为与 OpenAI 兼容的格式
+                message_data = {
+                    "content": response.choices[0].message.content
+                }
+                
+                # 处理 tool_calls
+                if response.choices[0].message.tool_calls:
+                    message_data["tool_calls"] = [
+                        tool_call.model_dump() if hasattr(tool_call, "model_dump") else tool_call.dict() 
+                        for tool_call in response.choices[0].message.tool_calls
+                    ]
+                
                 result = {
                     "choices": [{
-                        "message": {
-                            "content": response.choices[0].message.content
-                        }
+                        "message": message_data
                     }]
                 }
                 

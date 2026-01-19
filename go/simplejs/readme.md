@@ -1,625 +1,139 @@
-# SimpleJS
+# SimpleJS (v3.0.0)
 
-## 架构分析
+SimpleJS 是一个轻量级的 JavaScript 解释器，使用 C 语言编写（兼容 C++ 编译），旨在为嵌入式系统或资源受限环境提供基本的脚本能力。
 
-### 1. 整体架构图
+核心代码仅包含两个文件：`simplejs.cc` 和 `simplejs.h`。
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        SimpleJS 架构                        │
-├─────────────────────────────────────────────────────────────┤
-│  公共接口层 (simplejs.h)                                    │
-│  ┌─────────────────┬─────────────────┬─────────────────┐    │
-│  │   创建/销毁     │   值操作接口     │   执行接口       │    │
-│  │ js_create()     │ js_mkstr()      │ js_eval()       │    │
-│  │ js_stats()      │ js_mknum()      │ js_str()        │    │
-│  │ js_setgct()     │ js_mkobj()      │ js_truthy()     │    │
-│  └─────────────────┴─────────────────┴─────────────────┘    │
-├─────────────────────────────────────────────────────────────┤
-│  核心引擎层 (simplejs.cc)                                   │
-│  ┌─────────────────┬─────────────────┬─────────────────┐    │
-│  │   词法分析器     │   语法解析器     │   执行引擎       │    │
-│  │ ┌─────────────┐ │ ┌─────────────┐ │ ┌─────────────┐ │    │
-│  │ │Token识别    │ │ │表达式解析   │ │ │运算符执行   │ │    │
-│  │ │关键字解析   │ │ │语句解析     │ │ │函数调用     │ │    │
-│  │ │字符串/数字  │ │ │作用域管理   │ │ │控制流       │ │    │
-│  │ └─────────────┘ │ └─────────────┘ │ └─────────────┘ │    │
-│  └─────────────────┴─────────────────┴─────────────────┘    │
-├─────────────────────────────────────────────────────────────┤
-│  内存管理层                                                 │
-│  ┌─────────────────┬─────────────────┬─────────────────┐    │
-│  │   值类型系统     │   内存分配器     │   垃圾回收器     │    │
-│  │ ┌─────────────┐ │ ┌─────────────┐ │ ┌─────────────┐ │    │
-│  │ │NaN Boxing   │ │ │线性分配     │ │ │标记清除     │ │    │
-│  │ │类型编码     │ │ │4字节对齐    │ │ │引用追踪     │ │    │
-│  │ │数据打包     │ │ │实体管理     │ │ │内存压缩     │ │    │
-│  │ └─────────────┘ │ └─────────────┘ │ └─────────────┘ │    │
-│  └─────────────────┴─────────────────┴─────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-```
+## 主要特性
 
-### 2. 核心数据结构分析
+*   **极简设计**: 无外部依赖，易于集成。
+*   **内存高效**:
+    *   使用 **NaN-boxing** 技术将所有值（数字、指针、布尔值等）打包在 64 位整数 (`jsval_t`) 中。
+    *   **自带垃圾回收 (GC)**: 实现简单的标记-清除 (Mark-and-Sweep) 算法，自动管理内存。
+    *   **自定义内存分配**: 所有的内存分配都在用户提供的单一连续缓冲区中进行，无 `malloc` 碎片问题。
+*   **语言支持**:
+    *   **变量**: `let`, `var`, `const` 声明。
+    *   **类型**: Number (double), String, Boolean, Object, Function, Null, Undefined.
+    *   **控制流**: `if`, `else`, `while`, `for`, `break`, `return`.
+    *   **函数**: 支持 JS 定义的函数和 C 语言原生函数绑定。
+    *   **对象**: 支持对象字面量 `{k:v}` 和属性访问 `obj.prop`。
+    *   **运算**: 支持常见算术、位运算、逻辑和比较操作符。
 
-#### 2.1 JS引擎结构体 (struct js)
-```c
-struct js {
-  // 内存管理
-  uint8_t *mem;       // JS内存池
-  jsoff_t size;       // 内存池大小
-  jsoff_t brk;        // 当前使用边界
-  jsoff_t gct;        // GC触发阈值
-  jsoff_t nogc;       // GC排除实体偏移
-  
-  // 解析状态
-  const char *code;   // 当前解析代码
-  jsoff_t clen;       // 代码长度
-  jsoff_t pos;        // 解析位置
-  uint8_t tok;        // 当前token
-  uint8_t consumed;   // token消费标志
-  
-  // 执行状态
-  jsval_t scope;      // 当前作用域
-  uint8_t flags;      // 执行标志
-  jsval_t tval;       // 临时值
-  
-  // 调试信息
-  jsoff_t css;        // C栈最大使用
-  jsoff_t lwm;        // JS内存最低水位
-  char errmsg[33];    // 错误消息
-};
-```
+## 快速开始
 
-#### 2.2 JS值类型系统 (jsval_t)
-使用NaN Boxing技术将所有JS值打包到64位整数中：
-```
-数字类型: 直接存储IEEE 754双精度浮点数
-其他类型: 使用NaN标记 + 4位类型 + 48位数据
+### 1. 编译与运行测试
 
-格式: [NaN标记:12位][类型:4位][数据:48位]
-      11111111 1111tttt vvvvvvvv...vvvvvvvv
-
-类型编码:
-- T_UNDEF (3): undefined
-- T_NULL (4): null  
-- T_BOOL (6): boolean
-- T_STR (2): 字符串(内存偏移)
-- T_OBJ (0): 对象(内存偏移)
-- T_FUNC (7): 函数(内存偏移)
-- T_CFUNC (9): C函数(函数指针)
-- T_ERR (10): 错误
-```
-
-### 3. 主要功能模块拆解
-
-#### 3.1 词法分析器 (Lexer)
-**核心函数**: `next()`, `parsekeyword()`, `skiptonext()`
-
-**功能**:
-- 跳过空白字符和注释
-- 识别关键字 (function, if, for, let, const等)
-- 解析字符串字面量 (支持转义字符)
-- 解析数字字面量 (整数、浮点数、科学计数法)
-- 识别操作符和分隔符
-- 处理标识符
-
-**Token类型**:
-```c
-enum {
-  // 基础token
-  TOK_ERR, TOK_EOF, TOK_IDENTIFIER, TOK_NUMBER, TOK_STRING,
-  TOK_SEMICOLON, TOK_LPAREN, TOK_RPAREN, TOK_LBRACE, TOK_RBRACE,
-  
-  // 关键字 (50-99)
-  TOK_BREAK, TOK_CASE, TOK_CONST, TOK_FUNC, TOK_IF, TOK_FOR,
-  TOK_LET, TOK_RETURN, TOK_VAR, TOK_WHILE, ...
-  
-  // 操作符 (100+)
-  TOK_DOT, TOK_CALL, TOK_PLUS, TOK_MINUS, TOK_MUL, TOK_DIV,
-  TOK_ASSIGN, TOK_EQ, TOK_NE, TOK_LT, TOK_GT, ...
-};
-```
-
-#### 3.2 语法解析器 (Parser)
-**核心函数**: `js_expr()`, `js_stmt()`, `js_block()`
-
-**表达式解析** (`js_expr`):
-- 运算符优先级处理
-- 一元运算符 (+, -, !, ~, typeof)
-- 二元运算符 (算术、比较、逻辑、位运算)
-- 三元运算符 (? :)
-- 函数调用
-- 属性访问
-- 数组/对象字面量
-
-**语句解析** (`js_stmt`):
-- 变量声明 (let, const, var)
-- 函数声明
-- 控制流 (if/else, for, while, break, return)
-- 表达式语句
-- 块语句
-
-#### 3.3 执行引擎
-**核心函数**: `do_op()`, `js_call()`, `resolveprop()`
-
-**运算符执行**:
-- 算术运算 (+, -, *, /, %)
-- 比较运算 (==, !=, <, >, <=, >=)
-- 逻辑运算 (&&, ||, !)
-- 位运算 (&, |, ^, <<, >>, >>>)
-- 赋值运算
-
-**函数调用机制**:
-- 参数传递
-- 作用域创建
-- 返回值处理
-- 递归调用支持
-
-### 4. 内存管理机制
-
-#### 4.1 线性内存分配器
-```
-内存布局:
-┌─────────┬─────────┬─────────┬─────────┬─────────────────┐
-│ 实体1   │ 实体2   │ 实体3   │ 实体N   │   未使用空间     │
-└─────────┴─────────┴─────────┴─────────┴─────────────────┘
-0        brk                                            size
-```
-
-**实体类型**:
-- **对象** (8字节): [首属性偏移:4字节][父对象偏移:4字节]
-- **属性** (12+字节): [下一属性偏移:4字节][键偏移:4字节][值:8字节]
-- **字符串** (4+N字节): [长度<<2|类型:4字节][数据:N字节对齐]
-
-**分配策略**:
-- 4字节对齐分配
-- 线性增长，brk指向下一个可用位置
-- 实体类型编码在偏移量的低2位
-
-#### 4.2 垃圾回收机制
-**算法**: 标记-清除 (Mark and Sweep)
-
-**GC触发条件**:
-- 内存使用超过阈值 (brk > gct)
-- 手动调用 js_gc()
-
-**GC流程**:
-1. **标记阶段**: 标记所有实体为待删除
-2. **追踪阶段**: 从根对象(scope)开始追踪可达实体
-3. **清除阶段**: 删除未标记实体，压缩内存
-4. **修复阶段**: 更新所有偏移量引用
-
-### 5. 词法分析和语法解析流程
-
-#### 5.1 词法分析流程
-```
-输入代码 → skiptonext() → 识别token类型 → 解析token值 → 返回token
-    ↓           ↓              ↓            ↓           ↓
-  "let x"   跳过空白      TOK_LET      设置toff/tlen   TOK_LET
-    ↓           ↓              ↓            ↓           ↓  
-   " x"     跳过空白    TOK_IDENTIFIER  设置tval     TOK_IDENTIFIER
-```
-
-#### 5.2 语法解析流程
-```
-递归下降解析:
-js_eval() → js_stmt() → js_expr() → js_unary() → js_postfix() → js_primary()
-    ↑           ↑          ↑           ↑            ↑             ↑
-  执行入口    语句解析   表达式解析   一元运算     后缀运算      基础表达式
-```
-
-**优先级处理**:
-- 使用递归下降 + 运算符优先级表
-- 左结合性通过循环实现
-- 右结合性通过递归实现
-
-### 6. 值类型系统详解
-
-#### 6.1 类型检查和转换
-```c
-// 类型检查
-uint8_t vtype(jsval_t v)     // 获取值类型
-bool is_nan(jsval_t v)       // 检查是否为NaN编码
-bool js_truthy(jsval_t v)    // 真值检查
-
-// 类型转换
-double tod(jsval_t v)        // 转换为double
-jsval_t tov(double d)        // 从double转换
-size_t vdata(jsval_t v)      // 提取数据部分
-```
-
-#### 6.2 值创建接口
-```c
-jsval_t js_mkundef()         // 创建undefined
-jsval_t js_mknull()          // 创建null
-jsval_t js_mktrue()          // 创建true
-jsval_t js_mkfalse()         // 创建false
-jsval_t js_mknum(double)     // 创建数字
-jsval_t js_mkstr()           // 创建字符串
-jsval_t js_mkobj()           // 创建对象
-```
-
-### 7. 垃圾回收机制详解
-
-#### 7.1 标记算法
-```c
-// 标记所有实体为待删除
-void js_mark_all_entities_for_deletion(struct js *js)
-
-// 从根开始取消标记可达实体  
-void js_unmark_used_entities(struct js *js)
-
-// 删除标记的实体并压缩内存
-void js_delete_marked_entities(struct js *js)
-```
-
-#### 7.2 引用追踪
-- 从当前作用域开始
-- 递归追踪对象属性
-- 追踪字符串引用
-- 追踪函数闭包
-
-#### 7.3 内存压缩
-- 移除标记实体
-- 向前移动未标记实体
-- 更新所有偏移量引用
-- 调整brk边界
-
-### 8. 支持的JavaScript特性
-
-#### 8.1 数据类型
-- ✅ undefined, null
-- ✅ boolean (true/false)
-- ✅ number (IEEE 754双精度)
-- ✅ string (UTF-8)
-- ✅ object (键值对)
-- ✅ function (用户定义和C函数)
-
-#### 8.2 运算符
-- ✅ 算术: +, -, *, /, %
-- ✅ 比较: ==, !=, <, >, <=, >=
-- ✅ 逻辑: &&, ||, !
-- ✅ 位运算: &, |, ^, <<, >>, >>>
-- ✅ 赋值: =, +=, -=, *=, /=等
-- ✅ 三元: ? :
-
-#### 8.3 控制流
-- ✅ if/else条件语句
-- ✅ for循环 (C风格)
-- ✅ while循环
-- ✅ break/continue
-- ✅ return语句
-
-#### 8.4 函数
-- ✅ 函数声明和调用
-- ✅ 参数传递
-- ✅ 返回值
-- ✅ 递归调用
-- ✅ C函数绑定
-
-#### 8.5 对象
-- ✅ 对象字面量 {key: value}
-- ✅ 属性访问 obj.prop
-- ✅ 属性赋值
-- ✅ 动态属性
-
-### 9. 性能特点
-
-#### 9.1 内存效率
-- NaN Boxing减少内存占用
-- 线性分配器避免碎片
-- 紧凑的实体存储格式
-- 高效的垃圾回收
-
-#### 9.2 执行效率  
-- 单遍解析执行
-- 最小化内存分配
-- 优化的运算符实现
-- 轻量级函数调用
-
-#### 9.3 代码大小
-- 单文件实现 (~1400行)
-- 最小化依赖
-- 可配置特性
-- 适合嵌入式环境
-
----
-
-## C++11重写完成
-
-✅ **SimpleJS v2.0 已完成！** 基于C++11的现代化重写，包含以下特性：
-
-### 🚀 已实现的C++11特性
-
-1. **智能指针**: 使用`std::unique_ptr`管理内存（兼容C++11）
-2. **类封装**: 将C结构体重构为现代C++类
-3. **RAII**: 自动资源管理和异常安全
-4. **强类型枚举**: 使用`enum class`替换C枚举
-5. **constexpr**: 编译时常量和优化
-6. **lambda表达式**: 用于内置函数和回调
-7. **异常处理**: 类型安全的错误处理机制
-8. **模板**: 类型安全的泛型编程
-9. **命名空间**: 避免全局命名冲突
-10. **现代构造函数**: 委托构造和初始化列表
-
-### 📁 文件结构
-
-- `simplejs_v2.h` - 单个头文件实现，包含完整的JavaScript解释器
-- `test_v2.cpp` - 测试程序，验证所有功能
-- `Makefile_v2` - 构建系统，支持多种测试和分析
-
-### 🔧 使用方法
-
-#### 基本使用
-```cpp
-#include "simplejs_v2.h"
-using namespace simplejs;
-
-int main() {
-    // 创建JS引擎（64KB内存）
-    JSEngine engine(64 * 1024);
-    
-    // 执行JavaScript代码
-    JSValue result = engine.evaluate("let x = 42; x + 8");
-    
-    // 获取结果
-    std::cout << "Result: " << engine.valueToString(result) << std::endl;
-    
-    return 0;
-}
-```
-
-#### 高级功能
-```cpp
-// 创建和操作JS值
-JSValue num = engine.createNumber(3.14);
-JSValue str = engine.createString("Hello");
-JSValue obj = engine.createObject();
-JSValue arr = engine.createArray();
-
-// 类型检查
-if (num.isNumber()) {
-    double value = num.asNumber();
-}
-
-// 注册C++函数
-engine.registerNativeFunction("myFunc", [](JSEngine& engine, const std::vector<JSValue>& args) {
-    return engine.createString("Called from C++!");
-});
-
-// 内存管理
-engine.runGarbageCollection();
-std::cout << "Used memory: " << engine.getUsedMemory() << " bytes" << std::endl;
-```
-
-#### C兼容API
-```c
-// 兼容原始C API
-struct js* engine = js_create(NULL, 64 * 1024);
-uint64_t result = js_eval(engine, "42 + 8", 6);
-const char* str = js_str(engine, result);
-bool truthy = js_truthy(engine, result);
-js_destroy(engine);
-```
-
-### 🛠️ 构建和测试
+项目提供了一个简单的 `Makefile`。
 
 ```bash
-# 语法检查
-make -f Makefile_v2 check
+# 运行测试
+make test
 
-# 编译和运行测试
-make -f Makefile_v2 test
-
-# 调试版本
-make -f Makefile_v2 debug test-debug
-
-# 性能测试
-make -f Makefile_v2 perf
-
-# 内存检查（需要valgrind）
-make -f Makefile_v2 memtest
-
-# 静态分析（需要cppcheck）
-make -f Makefile_v2 analyze
+# 查看帮助
+make help
 
 # 清理
-make -f Makefile_v2 clean
-
-# 查看所有选项
-make -f Makefile_v2 help
+make clean
 ```
 
-### ✨ 主要改进
-
-#### 相比原版的优势
-1. **类型安全**: 强类型枚举和模板避免类型错误
-2. **内存安全**: RAII和智能指针防止内存泄漏
-3. **异常安全**: 现代异常处理机制
-4. **代码可读性**: 清晰的类结构和命名空间
-5. **扩展性**: 更容易添加新功能和优化
-6. **调试友好**: 更好的错误信息和调试支持
-
-#### 性能特点
-- **零开销抽象**: C++11特性不影响运行时性能
-- **编译时优化**: constexpr和模板优化
-- **内存效率**: 保持原有的NaN Boxing和线性分配
-- **兼容性**: 完全兼容原始C API
-
-### 🧪 测试结果
-
-```
-SimpleJS v2.0 Test Program
-Version: 2.0.0
-==========================
-
-✅ 基本值创建和类型检查
-✅ 真值判断
-✅ 对象和数组创建
-✅ 内存管理统计
-✅ 词法分析器
-✅ 基本表达式求值
-✅ C API兼容性
-
-内存使用: 44/65536 字节 (0.07%)
-所有测试通过！
-```
-
-### 📊 架构对比
-
-| 特性 | SimpleJS v1 (C) | SimpleJS v2 (C++11) |
-|------|----------------|---------------------|
-| 代码行数 | ~1400行 | ~1450行 |
-| 文件数量 | 2个文件 | 1个头文件 |
-| 内存管理 | 手动管理 | RAII + 智能指针 |
-| 错误处理 | 返回码 | 异常机制 |
-| 类型安全 | 弱类型 | 强类型 |
-| API风格 | C风格 | C++ + C兼容 |
-| 扩展性 | 中等 | 高 |
-| 调试性 | 基本 | 增强 |
-
-### 🎯 未来计划
-
-虽然核心功能已完成，但还有一些增强功能可以添加：
-
-1. **完整的语法解析器**: 当前是基础实现，可扩展支持更多JS特性
-2. **优化的垃圾回收**: 实现增量GC和分代GC
-3. **JIT编译**: 添加即时编译支持
-4. **模块系统**: 支持ES6模块
-5. **异步支持**: Promise和async/await
-6. **调试器接口**: 支持断点和单步调试
-
----
-
-## 总结
-
-SimpleJS v2.0 成功将原始的C实现现代化为C++11版本，在保持性能和兼容性的同时，大大提升了代码的安全性、可读性和可维护性。这个单头文件实现可以轻松集成到任何C++项目中，为嵌入式JavaScript功能提供了一个优秀的解决方案。
-
-A lightweight JavaScript interpreter implemented in C with minimal dependencies. SimpleJS provides a compact and efficient way to embed JavaScript functionality in your C/C++ applications.
-
-## Features
-
-- Ultra-compact JavaScript engine (< 2000 lines of code)
-- Extremely low memory footprint
-- Zero external dependencies
-- C API for seamless integration
-- Core JavaScript functionality:
-  - Variables and lexical scoping
-  - Objects with properties
-  - Functions and closures
-  - Control flow (if, for)
-  - Operators and expressions
-  - String manipulation
-
-## Usage
-
-### Basic Example
+### 2. 代码示例
 
 ```c
 #include "simplejs.h"
 #include <stdio.h>
-#include <stdlib.h>
 
 int main() {
-    // Allocate memory for SimpleJS
-    const size_t size = 64 * 1024;  // 64 KB
-    void* mem = malloc(size);
+    // 1. 分配一块内存给 JS 引擎使用
+    char mem[1024 * 64]; // 64KB
     
-    // Create JS instance
-    struct js* js = js_create(mem, size);
+    // 2. 创建 JS 实例
+    struct js *js = js_create(mem, sizeof(mem));
     
-    // Evaluate JavaScript code
-    jsval_t result = js_eval(js, "let x = 10; let y = 20; x + y", ~0U);
+    // 3. 执行 JavaScript 代码
+    const char *code = "let x = 10; let y = 20; x * y;";
+    jsval_t result = js_eval(js, code, 30); // 传入代码和长度
     
-    // Print the result
-    printf("Result: %s\n", js_str(js, result));
+    // 4. 获取结果
+    if (js_type(result) == JS_NUM) {
+        printf("Result: %f\n", js_getnum(result)); // 输出 200.000000
+    }
     
-    // Free memory
-    free(js);
+    // 5. 打印结果字符串
+    const char *str = js_str(js, result);
+    printf("String representation: %s\n", str);
+    
     return 0;
 }
 ```
 
-### Memory Management
+## API 参考
 
-SimpleJS provides garbage collection and memory control:
+所有公共 API 定义在 `simplejs.h` 中。
+
+### 核心管理
+
+*   `struct js *js_create(void *buf, size_t len)`: 初始化 JS 引擎。`buf` 是用于堆和栈的内存块。
+*   `void js_setgct(struct js *js, size_t threshold)`: 设置垃圾回收触发阈值（字节数）。
+*   `void js_setmaxcss(struct js *js, size_t size)`: 设置 C 栈最大使用深度限制。
+*   `void js_stats(...)`: 获取内存使用统计信息。
+
+### 执行与求值
+
+*   `jsval_t js_eval(struct js *js, const char *code, size_t len)`: 解析并执行 JS 代码。
+*   `jsval_t js_glob(struct js *js)`: 获取全局对象 (Global Object)。
+
+### 值操作 (jsval_t)
+
+SimpleJS 使用 `jsval_t` 类型表示所有 JS 值。
+
+*   **类型检查**:
+    *   `int js_type(jsval_t val)`: 返回值类型 (如 `JS_NUM`, `JS_STR`, `JS_OBJ` 等)。
+    *   `bool js_truthy(struct js *js, jsval_t val)`: 判断值在布尔上下文是否为真。
+
+*   **创建值 (C -> JS)**:
+    *   `js_mknum(double)`: 创建数字。
+    *   `js_mkstr(js, ptr, len)`: 创建字符串。
+    *   `js_mkobj(js)`: 创建空对象。
+    *   `js_mkfun(c_func_ptr)`: 创建 C 函数包装。
+    *   `js_mktrue()`, `js_mkfalse()`, `js_mkundef()`, `js_mknull()`: 创建基础值。
+
+*   **获取值 (JS -> C)**:
+    *   `double js_getnum(jsval_t)`: 获取数字值。
+    *   `int js_getbool(jsval_t)`: 获取布尔值 (0 或 1)。
+    *   `char *js_getstr(js, val, &len)`: 获取字符串内容。
+
+### C 函数绑定
+
+你可以将 C 函数注册到 JS 环境中被调用。C 函数签名必须符合：
+`jsval_t my_func(struct js *js, jsval_t *args, int nargs)`
+
+示例：
 
 ```c
-// Set garbage collection threshold (in bytes)
-js_setgct(js, 32 * 1024);  // Trigger GC when 32KB used
+// 定义 C 函数
+jsval_t c_add(struct js *js, jsval_t *args, int nargs) {
+    if (nargs < 2) return js_mknum(0);
+    double a = js_getnum(args[0]);
+    double b = js_getnum(args[1]);
+    return js_mknum(a + b);
+}
+
+// 注册到全局作用域
+void register_funcs(struct js *js) {
+    jsval_t global = js_glob(js);
+    jsval_t func = js_mkfun(c_add);
+    js_set(js, global, "add", func);
+}
 ```
 
-### Stack Size Control
+## 架构说明
 
-Prevent stack overflows by limiting maximum C stack size:
+SimpleJS 采用单遍解析（Single-pass parsing）和直接执行的架构，没有生成字节码或 AST 树，从而极大地降低了内存开销。
 
-```c
-// Set maximum C stack size
-js_setmaxcss(js, 1024);  // 1KB stack size limit
-```
+*   **Parser**: 递归下降解析器。
+*   **Values**: 64-bit NaN-boxing。
+*   **Memory**: 线性分配器 + 标记清除 GC。
 
-## Building
-
-### Compiling
-
-```bash
-# Build the library
-make
-
-# Run tests
-make main_test
-```
-
-### Including in Your Project
-
-```c
-#include "simplejs.h"
-
-// Link with -lsimplejs
-```
-
-## API Reference
-
-### Core Functions
-
-- `struct js* js_create(void* buf, size_t len)` - Initialize JS engine in provided memory
-- `jsval_t js_eval(struct js*, const char* code, size_t len)` - Execute JS code
-- `const char* js_str(struct js*, jsval_t val)` - Convert JS value to string
-- `void js_setgct(struct js*, size_t threshold)` - Set garbage collection threshold
-- `void js_setmaxcss(struct js*, size_t size)` - Set maximum C stack size
-- `void js_stats(struct js*, size_t* total, size_t* lwm, size_t* css)` - Get memory statistics
-
-### Value Creation
-
-- `jsval_t js_mkundef(void)` - Create undefined value
-- `jsval_t js_mknull(void)` - Create null value
-- `jsval_t js_mktrue(void)` - Create true value
-- `jsval_t js_mkfalse(void)` - Create false value
-- `jsval_t js_mknum(double val)` - Create number value
-- `jsval_t js_mkstr(struct js*, const void* data, size_t len)` - Create string value
-- `jsval_t js_mkobj(struct js*)` - Create empty object
-- `jsval_t js_mkfun(jsval_t (*fn)(struct js*, jsval_t*, int))` - Create function
-
-### Value Extraction
-
-- `int js_type(jsval_t val)` - Get value type
-- `double js_getnum(jsval_t val)` - Extract number
-- `int js_getbool(jsval_t val)` - Extract boolean as 0 or 1
-- `char* js_getstr(struct js*, jsval_t val, size_t* len)` - Extract string
-
-### Value Types
-
-- `JS_UNDEF` - undefined value
-- `JS_NULL` - null value
-- `JS_TRUE` - true value
-- `JS_FALSE` - false value
-- `JS_STR` - string value
-- `JS_NUM` - number value
-- `JS_ERR` - error value
-- `JS_PRIV` - private implementation value
-
-## License
+## 许可证
 
 MIT License
-
-## 参考
-1. https://github.com/cesanta/elk/

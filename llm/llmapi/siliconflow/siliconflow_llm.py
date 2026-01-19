@@ -1,9 +1,9 @@
 from typing import Any, List, Mapping, Optional, Dict
-from langchain.llms.base import LLM
-from langchain.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
+from langchain_core.callbacks import CallbackManagerForLLMRun
 from pydantic import Field
 from siliconflow.siliconflow_text import SiliconFlowTextAPI
-from util.mylog import logger
+from util.llm_utils import process_llm_response
 
 class SiliconFlowLLM(LLM):
     """SiliconFlow大模型的 LangChain LLM 实现"""
@@ -21,12 +21,12 @@ class SiliconFlowLLM(LLM):
     def _llm_type(self) -> str:
         """返回 LLM 类型"""
         return "siliconflow"
-
+    
     @property
     def _supported_params(self) -> List[str]:
         """返回支持的参数"""
         return ["temperature", "top_p", "max_tokens", "model"]
-
+    
     @property
     def _default_params(self) -> Dict[str, Any]:
         """获取调用SiliconFlow API的默认参数"""
@@ -53,17 +53,11 @@ class SiliconFlowLLM(LLM):
             temperature=self.temperature,
             top_p=self.top_p,
             max_tokens=self.max_tokens,
-            stop=stop[0] if stop else None
+            stop=stop[0] if stop else None,
+            **kwargs
         )
         
-        if "error" in response:
-            raise ValueError(f"API调用错误: {response['error']}")
-            
-        if "choices" not in response:
-            raise ValueError("API响应格式错误")
-        
-        result = response["choices"][0]["message"]["content"]
-        return result
+        return process_llm_response(response)
         
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
@@ -76,6 +70,8 @@ class SiliconFlowLLM(LLM):
         }
 
 if __name__ == "__main__":
+    from util.mylog import logger
+    
     # 测试SiliconFlow模型
     llm = SiliconFlowLLM()
     logger.info("测试基本调用：")

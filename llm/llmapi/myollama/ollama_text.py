@@ -2,7 +2,6 @@ from typing import Dict, List, Optional, Any, Union
 from util.mylog import logger
 from myollama.ollama_base import OllamaBase
 import requests
-import json
 
 class OllamaTextAPI(OllamaBase):
     """Ollama API 调用封装"""
@@ -120,7 +119,7 @@ class OllamaTextAPI(OllamaBase):
                     result = response.json()
                     
                     # 记录原始响应
-                    logger.debug(f"Ollama API 原始响应: {result}")
+                    # logger.debug(f"Ollama API 原始响应: {result}")
                     
                     # 转换为与 OpenAI 兼容的格式
                     content = result.get("message", {}).get("content", "")
@@ -211,7 +210,7 @@ class OllamaTextAPI(OllamaBase):
                     result = response.json()
                     
                     # 记录原始响应
-                    logger.debug(f"Ollama API 原始响应: {result}")
+                    # logger.debug(f"Ollama API 原始响应: {result}")
                     
                     # 转换为与 OpenAI 兼容的格式
                     content = result.get("response", "")

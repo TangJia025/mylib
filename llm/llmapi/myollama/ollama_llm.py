@@ -1,8 +1,9 @@
 from typing import Any, List, Mapping, Optional, Dict
-from langchain.llms.base import LLM
-from langchain.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
+from langchain_core.callbacks import CallbackManagerForLLMRun
 from pydantic import Field
 from myollama.ollama_text import OllamaTextAPI
+from util.llm_utils import process_llm_response
 
 class OllamaLLM(LLM):
     """Ollama 大模型的 LangChain LLM 实现"""
@@ -71,14 +72,7 @@ class OllamaLLM(LLM):
             params["prompt"] = prompt
             response = self.client.chat.generate(**params)
         
-        if "error" in response:
-            raise ValueError(f"API call error: {response['error']}")
-            
-        if "choices" not in response:
-            raise ValueError("Invalid API response format")
-        
-        result = response["choices"][0]["message"]["content"]
-        return result
+        return process_llm_response(response)
         
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
@@ -98,29 +92,3 @@ if __name__ == "__main__":
     
     # 测试基本生成
     prompt = "请用简短的话介绍一下人工智能"
-    logger.info(f"\n测试基本生成\n提示: {prompt}")
-    response = llm(prompt)
-    logger.info(f"响应: {response}")
-    
-    # 测试带参数的生成
-    prompt = "写一首关于春天的诗"
-    logger.info(f"\n测试带参数的生成\n提示: {prompt}")
-    response = llm(
-        prompt,
-        temperature=0.8,
-        max_tokens=100
-    )
-    logger.info(f"响应: {response}")
-    
-    # 测试聊天历史
-    logger.info("\n测试聊天历史")
-    messages = [
-        {"role": "user", "content": "你好，我想了解一下深度学习"},
-        {"role": "assistant", "content": "深度学习是机器学习的一个分支，它使用多层神经网络来学习数据的特征。"},
-        {"role": "user", "content": "那神经网络是什么？"}
-    ]
-    response = llm(
-        "",  # 空提示，因为最后一条消息已经包含了问题
-        messages=messages
-    )
-    logger.info(f"响应: {response}")

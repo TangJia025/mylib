@@ -38,3 +38,7 @@
 **/llm/apps/translation
 **/*.zip
 **/release
+**/simplejs_test
+**/simplejs
+**/idea
+**/Bayes

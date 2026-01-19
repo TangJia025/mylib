@@ -140,3 +140,6 @@ class CustomAgent(BaseAgent):
 - langchain
 - gradio
 - 相应的LLM API和SDK
+
+## 参考
+（1）参考DeepL开发类似的功能

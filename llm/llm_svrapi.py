@@ -2,15 +2,15 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 
 from llm_factory import LLMFactory, LLMChatAdapter
 from embedding_factory import EmbeddingFactory
 from get_model_list import get_text_model_list
 from util.mylog import logger
-from reranker_factory import RerankerFactory
 import os
+import requests
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -98,7 +98,7 @@ def chat_completions():
         return jsonify({"error": {"message": "model is required"}}), 400
 
     temperature = body.get("temperature", 0.6)
-    top_p = body.get("top_p", 0.9)
+    top_p = body.get("top_p", None)
     max_tokens = body.get("max_tokens", 32768)
 
     # 兼容非chat客户端：允许直接传prompt
@@ -121,41 +121,6 @@ def chat_completions():
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": result},
-            "finish_reason": "stop",
-        }],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-    })
-
-@app.route("/v1/completions", methods=["POST"])
-def completions():
-    body = request.get_json(silent=True) or {}
-    model = body.get("model")
-    prompt = body.get("prompt")
-    provider = body.get("provider") or request.headers.get("X-Provider")
-
-    if not model:
-        return jsonify({"error": {"message": "model is required"}}), 400
-    if prompt is None:
-        return jsonify({"error": {"message": "prompt is required"}}), 400
-
-    temperature = body.get("temperature", 0.6)
-    top_p = body.get("top_p", 0.9)
-    max_tokens = body.get("max_tokens", 32768)
-
-    adapter = create_adapter(model, provider, temperature, top_p, max_tokens)
-    # completions 不使用system_info
-    isok, result = adapter.chat(str(prompt))
-    if not isok:
-        return jsonify({"error": {"message": str(result)}}), 500
-
-    return jsonify({
-        "id": "cmpl-" + uuid.uuid4().hex,
-        "object": "text_completion",
-        "created": int(time.time()),
-        "model": model,
-        "choices": [{
-            "index": 0,
-            "text": result,
             "finish_reason": "stop",
         }],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
@@ -193,66 +158,6 @@ def embeddings():
         "data": data,
         "model": model or "huggingface-default",
         "usage": {"prompt_tokens": 0, "total_tokens": 0},
-    })
-
-# 新增 rerank 接口
-@app.route("/v1/rerank", methods=["POST"])
-def rerank():
-    body = request.get_json(silent=True) or {}
-
-    query = body.get("query") or body.get("q")
-    documents = body.get("documents") or body.get("docs")
-    if not query:
-        return jsonify({"error": {"message": "query is required"}}), 400
-    if not isinstance(documents, list) or len(documents) == 0:
-        return jsonify({"error": {"message": "documents must be a non-empty list"}}), 400
-
-    # 解析配置
-    reranker_type = (body.get("reranker_type") or "huggingface").strip().lower()
-    with_score = body.get("with_score", True)
-    top_n = body.get("top_n")
-    kwargs: Dict[str, Any] = body.get("kwargs", {})
-
-    # 兼容多种文档对象格式（字符串或带 text/content 字段的对象）
-    texts: List[str] = []
-    for d in documents:
-        if isinstance(d, dict):
-            s = d.get("text") or d.get("content") or d.get("document") or d.get("doc")
-            texts.append(str(s if s is not None else d))
-        else:
-            texts.append(str(d))
-
-    try:
-        reranker = RerankerFactory.create(reranker_type=reranker_type, **kwargs)
-        results = reranker.rerank(query, texts, with_score=with_score)
-        if isinstance(top_n, int) and top_n > 0:
-            results = results[:top_n]
-    except Exception as e:
-        return jsonify({"error": {"message": str(e)}}), 500
-
-    data = []
-    for i, item in enumerate(results):
-        if with_score and isinstance(item, (tuple, list)) and len(item) >= 2:
-            doc, score = item[0], item[1]
-            data.append({
-                "object": "rerank",
-                "index": i,
-                "document": doc,
-                "score": float(score),
-            })
-        else:
-            data.append({
-                "object": "rerank",
-                "index": i,
-                "document": item,
-                "score": None,
-            })
-
-    return jsonify({
-        "object": "list",
-        "data": data,
-        "reranker_type": reranker_type,
-        "query": query,
     })
 
 if __name__ == "__main__":
