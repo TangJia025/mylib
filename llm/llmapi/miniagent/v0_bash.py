@@ -9,6 +9,13 @@ v0_bash.py - Mini Claude Code: Bash 是一切 (~50 行核心代码)
 import sys
 import os
 import traceback
+
+import pathlib
+
+# 把脚本所在目录的父目录加入搜索路径
+_script_dir = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(_script_dir.parent))
+
 from llm_factory import LLMFactory, LLMChatAdapter
 from util.mylog import logger
 from utils import run_bash, BASH_TOOLS
@@ -16,8 +23,8 @@ from utils import run_bash, BASH_TOOLS
 # 初始化 API 客户端
 # 使用 LLMFactory 创建 LLM 实例
 llm = LLMFactory.create(
-    model_type="openai",
-    model_name="deepseek-v3.1", # 使用支持的模型
+    model_type="qwen",
+    model_name="Bili-Qwen3-32B", # 使用支持的模型
     temperature=0.0,
     max_tokens=8192
 )
