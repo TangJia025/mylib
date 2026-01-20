@@ -64,8 +64,10 @@ def chat(prompt, history=None, max_steps=10):
     if not has_system:
          # 在开头添加系统提示词作为系统消息
          history.insert(0, {"role": "system", "content": SYSTEM})
+         logger.info(f"last item1: {history[-1]}, len: {len(history)}")
 
     history.append({"role": "user", "content": prompt})
+    logger.info(f"last item2: {history[-1]}, len: {len(history)}")
 
     step = 0
     while step < max_steps:
@@ -89,8 +91,10 @@ def chat(prompt, history=None, max_steps=10):
         # chat_with_tools 返回的是 Response 对象，包含 content 列表
         for block in response.content:
             if getattr(block, "type", "") == "text":
+                logger.info("111 返回了文本")
                 assistant_text.append(block.text)
             elif getattr(block, "type", "") == "tool_use":
+                logger.info("222 返回了工具调用")
                 tool_calls.append(block)
 
         # 记录助手文本回复
@@ -98,9 +102,12 @@ def chat(prompt, history=None, max_steps=10):
         if full_text:
             logger.info(f"助手: {full_text}")
             history.append({"role": "assistant", "content": full_text})
+            logger.info(f"last item3: {history[-1]}, len: {len(history)}")
         elif tool_calls:
             # 如果只有工具调用没有文本，添加一个占位文本到历史，保持对话连贯
+            logger.info(f"工具lll")
             history.append({"role": "assistant", "content": "(Executing tools...)"})
+            logger.info(f"last item4: {history[-1]}, len: {len(history)}")
         
         # 3. 如果没有工具调用，直接返回内容
         if not tool_calls:
@@ -132,9 +139,11 @@ def chat(prompt, history=None, max_steps=10):
         if all_outputs:
             combined_output = "\n".join(all_outputs)
             history.append({"role": "user", "content": f"执行结果：\n{combined_output}\n\n请继续处理。"})
+            logger.info(f"last item5: {history[-1]}, len: {len(history)}")
         else:
             # 有工具调用但没产生输出（可能是解析失败或空命令）
             history.append({"role": "user", "content": "Error: Tool call failed or produced no output."})
+            logger.info(f"last item6: {history[-1]}, len: {len(history)}")
 
     return "达到最大执行步数限制，停止执行。"
 

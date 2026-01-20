@@ -52,6 +52,7 @@ class LLMChatAdapter:
             langchain_messages = self._build_langchain_messages(history_messages, prompt)
             logger.info(f"[chat] Messages count: {len(langchain_messages)}, prompt len: {len(prompt)}")
             response = self.llm.invoke(langchain_messages, image=image, **kwargs)
+            logger.info(f"[chat] LLM响应长度: {len(response)}")
         except Exception as e:
             success = False
             response = f"LLM调用出错: {str(e)}"
@@ -128,8 +129,10 @@ class LLMChatAdapter:
                 if isinstance(t, dict):
                     # Check if it's already in the expected format or needs conversion
                     if "type" in t and t["type"] == "function":
-                         converted_tools.append(t)
+                        logger.info("case 1")
+                        converted_tools.append(t)
                     elif "input_schema" in t:
+                        logger.info("case 2")
                         converted_tools.append({
                             "type": "function",
                             "function": {
@@ -139,6 +142,7 @@ class LLMChatAdapter:
                             }
                         })
                     else:
+                         logger.info("case 3")
                         # Fallback: assume it's simple definition or already close to function
                          converted_tools.append({
                             "type": "function",
@@ -160,6 +164,8 @@ class LLMChatAdapter:
             success = False
             content = str(e)
 
+        logger.info(f"jjj chat_with_tools success: {success}, content : {content}")  
+
         blocks = []
         stop_reason = "end_turn"
         
@@ -176,11 +182,13 @@ class LLMChatAdapter:
                     is_tool_call = True
                     stop_reason = "tool_use"
                     if data.get("content"):
+                        logger.info("case A")
                         blocks.append(type("TextBlock", (), {"type": "text", "text": data["content"]}))
                     tool_list = data["tool_calls"]
                 
                 # Check if it looks like a tool call list (Legacy)
                 elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict) and ("function" in data[0] or "type" in data[0]):
+                    logger.info("case B")
                     is_tool_call = True
                     stop_reason = "tool_use"
                     tool_list = data
@@ -197,6 +205,8 @@ class LLMChatAdapter:
                                 except:
                                     pass
                                 
+                            logger.info("case X")
+                            logger.info(f"Tool call detected: {func_data['name']} with args: {args}")
                             blocks.append(type("ToolUseBlock", (), {
                                 "type": "tool_use",
                                 "id": tc.get("id", "call_1"),
@@ -204,9 +214,11 @@ class LLMChatAdapter:
                                 "input": args
                             }))
                 else:
+                     logger.info("case Y")
                      blocks.append(type("TextBlock", (), {"type": "text", "text": content}))
             except:
                 # Not JSON, treat as text
+                logger.info("case Z")
                 blocks.append(type("TextBlock", (), {"type": "text", "text": content}))
         else:
              blocks.append(type("TextBlock", (), {"type": "text", "text": f"Error: {content}"}))

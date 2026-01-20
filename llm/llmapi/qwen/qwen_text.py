@@ -99,7 +99,7 @@ class QwenTextAPI(QwenBase):
                 }
                 
                 # 记录处理后的响应
-                logger.info(f"通义千问 API 响应内容: {result['choices'][0]['message']['content'][:100]}...")
+                logger.info(f"jjj通义千问 API 响应内容: {result['choices'][0]['message']['content'][:100]}...")
                 
                 return result
                 
