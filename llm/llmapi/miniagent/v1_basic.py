@@ -50,6 +50,11 @@ Claude Code 有约 20 个工具。但这 4 个涵盖了 90% 的用例：
 from pathlib import Path
 import sys
 import traceback
+
+# 把脚本所在目录的父目录加入搜索路径
+_script_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(_script_dir.parent))
+
 from llm_factory import LLMFactory, LLMChatAdapter
 from util.mylog import logger
 from utils import execute_base_tools, BASIC_TOOLS
@@ -57,8 +62,8 @@ from utils import execute_base_tools, BASIC_TOOLS
 # 初始化 API 客户端
 # 使用 LLMFactory 创建 LLM 实例
 llm = LLMFactory.create(
-    model_type="openai",
-    model_name="deepseek-v3.1", # 使用支持的模型
+    model_type="qwen",
+    model_name="Bili-Qwen3-32B", # 使用支持的模型
     temperature=0.0,
     max_tokens=8192
 )
